@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## 0.7.4 — security fixes for unauthenticated callers
+
+Worker, Node backend and userscript. Read the Node upgrade note before updating a self-hosted Node/Docker deployment. Details: [docs/SECURITY_UPGRADE.md](docs/SECURITY_UPGRADE.md#recommended-settings-for-new-deployments-074).
+
+- **Worker + Node:** a wrong `X-Admin-Password` was answered with an error encrypted under the real admin password, which let anyone who knew the path collect material for offline password guessing. It is now a plain `401`. Failed admin passwords are limited to 30 per client and minute.
+- **Node:** unknown paths, including ones outside `PATH_SECRET`, were answered with a `404` encrypted under `TRANSPORT_SECRET`, each costing a blocking key derivation. They are now plain text; key derivation no longer blocks the event loop; requests are limited to 600 per client and minute; internal error messages are no longer returned and `PATH_SECRET` is no longer logged.
+- **Node upgrade note:** the server now refuses to start when a secret is a placeholder (`change-me`), when two of the three secrets are equal, when `ADMIN_PASSWORD` or `TRANSPORT_SECRET` is shorter than 16 characters, or when `PATH_SECRET` contains route pattern characters. Rotate the affected secret, or set `ALLOW_WEAK_SECRETS=true` to keep starting with the old values. Behind a reverse proxy set `TRUST_PROXY=true` so the limits apply per client.
+- **Docker Compose:** the port is published on `127.0.0.1` instead of all interfaces. Put a TLS reverse proxy in front; `COOKIE_SHARE_BIND=0.0.0.0` restores the old behaviour.
+- **Userscript:** updates are fetched from the latest GitHub Release asset instead of the `main` branch, so a commit only reaches installed scripts once it is released.
+- **Docs:** recommended settings for new deployments, and the remaining limit of protocol v1 (anyone who knows `PATH_SECRET` can guess a weak `TRANSPORT_SECRET` offline; use random secrets or device tokens with `REQUIRE_CLIENT_AUTH=true`).
+- **Worker + Node：** 错误的 `X-Admin-Password` 以前会得到用真实管理员密码加密的错误响应，知道路径的人可借此离线猜解密码；现在返回明文 `401`，并限制每个客户端每分钟 30 次失败尝试。
+- **Node：** 未知路径（包括 `PATH_SECRET` 之外的路径）不再用 `TRANSPORT_SECRET` 加密 `404`；密钥派生不再阻塞事件循环；新增每客户端每分钟 600 次请求限制；不再返回内部错误信息，也不再把 `PATH_SECRET` 写入日志。
+- **Node 升级须知：** 密钥仍为占位值（`change-me`）、三个密钥有重复、`ADMIN_PASSWORD` 或 `TRANSPORT_SECRET` 少于 16 个字符，或 `PATH_SECRET` 含路由特殊字符时，服务将拒绝启动。请更换密钥，或设置 `ALLOW_WEAK_SECRETS=true` 暂时沿用旧值。位于反向代理之后时请设置 `TRUST_PROXY=true`。
+- **Docker Compose：** 端口改为只发布到 `127.0.0.1`，请在前面加 TLS 反向代理；`COOKIE_SHARE_BIND=0.0.0.0` 可恢复原行为。
+- **油猴脚本：** 自动更新改为从最新 GitHub Release 获取，不再直接跟随 `main` 分支。
+
 ## 0.7.3 - Docker Compose deployment
 
 Backend deployment only - no userscript release.

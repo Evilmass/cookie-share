@@ -18,6 +18,32 @@ The existing administrator password can still authenticate old API clients. The 
 
 **No universal zero-regression guarantee is possible across browsers/script managers.** Automated compatibility and fault-injection tests are provided; the browser acceptance checklist below remains required before releasing. A Cookie API that ignores/rejects an attribute must now cause a failed verification, not a misleading success. Cookie expiry, server-side session rotation, device binding and non-cookie login state cannot be repaired by copying cookies.
 
+## Recommended settings for new deployments (0.7.4)
+
+The defaults favour compatibility with existing installations. A new deployment has nothing to stay compatible with and should start from the stricter settings:
+
+1. **Generate every secret from 32 random bytes** (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`), one value per secret. Do not use passwords a person chose.
+2. **Give each device a device token** (`DEVICE_TOKENS`, see below) instead of handing out the shared `TRANSPORT_SECRET`, then set `REQUIRE_CLIENT_AUTH=true`.
+3. Set `DISABLE_LEGACY_ADMIN=true` unless an external tool still authenticates with the raw `X-Admin-Password` header. The admin page does not need it.
+4. Set `STORAGE_KEYS` / `STORAGE_KEY_ID` so cookie payloads are encrypted in D1.
+5. Bind a Cloudflare `RATE_LIMITER` or a WAF rate-limiting rule; the built-in limiter is per isolate.
+6. Only use an `https://` Base URL in the userscript.
+
+Items 2–5 are Worker-only. For the Node backend follow `server/README.md` (TLS reverse proxy, loopback bind, `TRUST_PROXY`).
+
+### Why secret strength matters: the v1 offline-guessing limit
+
+In protocol v1 the ciphertext is the access control: `GET /<PATH_SECRET>/receive-cookies/<id>` and `list-cookies-by-host` answer anyone who knows `PATH_SECRET` with a response encrypted under `TRANSPORT_SECRET`. Whoever holds such a response can test guesses for the secret offline, at the cost of one PBKDF2 (100,000 iterations) per guess, with no rate limit involved. This cannot be removed without breaking v1 clients. It is harmless for a 32-random-byte secret and fatal for a human-chosen one.
+
+What 0.7.4 closes are the cases that needed no knowledge at all, or that exposed the administrator password:
+
+- A wrong `X-Admin-Password` was answered with a `401` encrypted under the real `ADMIN_PASSWORD` (Worker and Node). It is now plain text, and admin responses are only ever encrypted for an authenticated caller.
+- The Node backend encrypted its `404` for **any** unknown path, including paths outside `PATH_SECRET`, under `TRANSPORT_SECRET`. Unknown paths are now plain text on both backends.
+
+`REQUIRE_CLIENT_AUTH=true` removes the remaining v1 exposure on the Worker: uncredentialed requests are rejected in plain text before anything is encrypted, and device tokens are random by construction. `PATH_SECRET` travels in URLs (browser history, proxy and CDN logs), so treat it as obscurity, not as a credential.
+
+Failed legacy admin authentications are limited to 30 per client address and minute on both backends (previously only `/admin/login` was). While the limit is exceeded even the correct password gets `429`.
+
 ## Optional per-device / per-record authorization
 
 Set `DEVICE_TOKENS` as a Worker **secret**, containing a JSON array. Each token must be generated from at least 32 random bytes, encoded as unpadded base64url (43 characters for 32 bytes). Validation of token length cannot measure entropy; do not use repeated characters or human passwords. Example schema (replace the placeholder with a generated random token):
