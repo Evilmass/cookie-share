@@ -333,7 +333,12 @@ test('panel keystrokes and dialogs stay inside the shadow root', () => {
   assert.ok(!/(serverInput|transportInput)\.tabIndex = -1/.test(source));
   assert.ok(source.includes("if (event.key !== 'Enter' && event.key !== ' ') return;"));
   assert.equal(/window\.(prompt|confirm)\(|nativePrompt|nativeConfirm/.test(source), false);
-  assert.match(source, /@version\s+0\.7\.2/);
+  assert.match(source, /@version\s+0\.7\.4/);
+  // Updates come from tagged release assets, never from a moving branch.
+  for (const key of ['updateURL', 'downloadURL']) {
+    assert.match(source, new RegExp('@' + key + '\\s+https://github\\.com/fangyuan99/cookie-share/releases/latest/download/cookie-share\\.user\\.js\\n'));
+  }
+  assert.equal(/@(updateURL|downloadURL)\s+\S*refs\/heads/.test(source), false);
 });
 
 test('a credential with 100 record IDs stays within the D1 parameter limit', async () => {

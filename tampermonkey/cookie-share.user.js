@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cookie Share
 // @namespace    https://github.com/fangyuan99/cookie-share
-// @version      0.7.2
+// @version      0.7.4
 // @description  Sends and receives cookies with your friends
 // @author       fangyuan99,aBER
 // @match        *://*/*
@@ -14,7 +14,8 @@
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_setClipboard
 // @grant        GM_cookie
-// @updateURL    https://github.com/fangyuan99/cookie-share/raw/refs/heads/main/tampermonkey/cookie-share.user.js
+// @updateURL    https://github.com/fangyuan99/cookie-share/releases/latest/download/cookie-share.user.js
+// @downloadURL  https://github.com/fangyuan99/cookie-share/releases/latest/download/cookie-share.user.js
 // @connect      *
 // ==/UserScript==
 
