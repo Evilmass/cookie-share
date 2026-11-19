@@ -7,7 +7,8 @@ services:
     restart: unless-stopped
     init: true
     env_file:
-      # Copy server/.env.example and set three distinct secrets before starting.
+      # Copy server/.env.example and set three distinct random secrets before
+      # starting; the server refuses placeholder, reused or short values.
       - ./server/.env
     environment:
       NODE_ENV: production
@@ -15,7 +16,10 @@ services:
       PORT: "3000"
       DB_PATH: /app/data/cookie_share.db
     ports:
-      - "${COOKIE_SHARE_PORT:-3000}:3000"
+      # The server speaks plain HTTP, so it is published on loopback only: put a
+      # TLS reverse proxy in front of it. COOKIE_SHARE_BIND=0.0.0.0 exposes it
+      # directly and should only be used on a trusted network.
+      - "${COOKIE_SHARE_BIND:-127.0.0.1}:${COOKIE_SHARE_PORT:-3000}:3000"
     volumes:
       - cookie-share-data:/app/data
     healthcheck:
