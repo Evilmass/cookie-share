@@ -1,0 +1,37 @@
+services:
+  cookie-share:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cookie-share
+    restart: unless-stopped
+    init: true
+    env_file:
+      # Copy server/.env.example and set three distinct secrets before starting.
+      - ./server/.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DB_PATH: /app/data/cookie_share.db
+    ports:
+      - "${COOKIE_SHARE_PORT:-3000}:3000"
+    volumes:
+      - cookie-share-data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/' + process.env.PATH_SECRET.trim() + '/capabilities',
+          { signal: AbortSignal.timeout(3000) })
+          .then(response => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  cookie-share-data:

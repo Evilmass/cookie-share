@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## 0.7.3 - Docker Compose deployment
+
+Backend deployment only - no userscript release.
+
+- Add a Docker Compose service for the Node.js backend with configuration from `server/.env`, a persistent SQLite volume, automatic restart and an HTTP health check.
+- Add a multi-stage Node.js 22 image that runs as a non-root user with production dependencies; restrict the build context to backend source and build inputs.
+
 ## 0.7.2 — panel input and layout follow-ups
 
 - Fix keystrokes typed in the panel also appearing in ChatGPT's composer: while a panel field has focus the script host is marked editable, so the page's "type anywhere" handler leaves the key alone. Focus moves inside the panel are tracked too, and the flag is cleared when the field or panel goes away.
