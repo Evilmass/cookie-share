@@ -9,6 +9,8 @@ export interface RuntimeConfig {
   basePath: string;
   adminPassword: string;
   transportSecret: string;
+  /** Take the client address from X-Forwarded-For (one trusted reverse proxy). */
+  trustProxy?: boolean;
 }
 
 export interface NormalizedCookie {

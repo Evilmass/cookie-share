@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createApp } from "../src/app";
+import { validateSecrets } from "../src/config";
 import { ENCRYPTION_VERSION, decryptPayload, encryptPayload } from "../src/crypto";
 import { createDatabase } from "../src/db";
 import { CookieStore } from "../src/store";
@@ -177,10 +178,59 @@ describe("cookie-share server", () => {
 
     const unauthorizedResponse = await fetch(`${baseUrl}${config.basePath}/admin/list-cookies`);
     expect(unauthorizedResponse.status).toBe(401);
-    expect(decryptPayload(config.adminPassword, await readJson(unauthorizedResponse))).toMatchObject({
-      success: false,
-      message: "Unauthorized",
+    // Never encrypted with the real admin password (offline guessing oracle).
+    expect(await readJson(unauthorizedResponse)).toEqual({ success: false, message: "Unauthorized" });
+  });
+
+  test("answers unknown paths in plain text without using any secret", async () => {
+    for (const url of ["/", "/wrong-path/send-cookies", `${config.basePath}/nonexistent`, `${config.basePath}x/admin`]) {
+      const response = await fetch(baseUrl + url);
+      expect(response.status, url).toBe(404);
+      expect(await readJson(response), url).toEqual({ success: false, message: "Not Found" });
+    }
+  });
+
+  test("throttles repeated wrong admin passwords", async () => {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const response = await fetch(`${baseUrl}${config.basePath}/admin/list-cookies`, {
+        headers: { "X-Admin-Password": `guess-${attempt}` },
+      });
+      expect(response.status).toBe(401);
+    }
+
+    // Even the correct password is refused while throttled.
+    const throttled = await fetch(`${baseUrl}${config.basePath}/admin/list-cookies`, {
+      headers: { "X-Admin-Password": config.adminPassword },
     });
+    expect(throttled.status).toBe(429);
+    expect(await readJson(throttled)).toMatchObject({ success: false });
+  });
+
+  test("rate limits floods per client", async () => {
+    let last = 0;
+    for (let batch = 0; batch < 61; batch += 1) {
+      const responses = await Promise.all(
+        Array.from({ length: 10 }, () => fetch(`${baseUrl}/flood`)),
+      );
+      last = responses[responses.length - 1]!.status;
+      await Promise.all(responses.map((response) => response.arrayBuffer()));
+    }
+    expect(last).toBe(429);
+  });
+
+  test("refuses placeholder, reused and short secrets at startup", () => {
+    const strong = {
+      pathSecret: "p4th-Zk3v9QmT",
+      adminPassword: "admin-7Hq2LxV9cR4tNw8B",
+      transportSecret: "transport-M3pXz6Kd1FsY5uJq",
+    };
+    expect(() => validateSecrets(strong)).not.toThrow();
+    expect(() => validateSecrets({ ...strong, adminPassword: "change-me" })).toThrow(/placeholder/);
+    expect(() => validateSecrets({ ...strong, transportSecret: strong.adminPassword })).toThrow(/different/);
+    expect(() => validateSecrets({ ...strong, transportSecret: "short" })).toThrow(/at least/);
+    expect(() => validateSecrets({ ...strong, pathSecret: "a:b" })).toThrow(/unsupported/);
+    expect(() => validateSecrets({ ...strong, transportSecret: "short" }, true)).not.toThrow();
+    expect(() => validateSecrets({ ...strong, pathSecret: "a:b" }, true)).toThrow(/unsupported/);
   });
 
   test("supports admin create, update, list, export, import, and delete", async () => {

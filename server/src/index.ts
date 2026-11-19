@@ -10,7 +10,8 @@ function main(): void {
   const app = createApp(config, store);
 
   app.listen(config.port, config.host, () => {
-    console.log(`Cookie-share server listening on http://${config.host}:${config.port}${config.basePath}`);
+    // PATH_SECRET is deliberately not logged.
+    console.log(`Cookie-share server listening on http://${config.host}:${config.port}/<PATH_SECRET>`);
   });
 }
 

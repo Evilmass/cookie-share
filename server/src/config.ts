@@ -40,18 +40,70 @@ function resolveDbPath(rawPath: string): string {
   return path.isAbsolute(rawPath) ? rawPath : path.resolve(SERVER_ROOT, rawPath);
 }
 
+function configError(message: string): HttpError {
+  return new HttpError(500, message, { success: false, error: message }, { plain: true });
+}
+
+function isTrue(name: string): boolean {
+  return process.env[name]?.trim().toLowerCase() === "true";
+}
+
+const PLACEHOLDER_SECRETS = new Set(["change-me", "changeme", "dev", "dev-password", "dev-transport-secret"]);
+export const MIN_SECRET_LENGTH = 16;
+
+// Every response of the v1 protocol is ciphertext under one of these secrets,
+// so a guessable value can be brute-forced offline. Refuse to start with one.
+export function validateSecrets(
+  secrets: { pathSecret: string; adminPassword: string; transportSecret: string },
+  allowWeak = false,
+): void {
+  // Also the characters Express treats as route pattern syntax.
+  if (/[\x00-\x20\x7f<>;?#\\:*{}()[\]!+]/.test(secrets.pathSecret)) {
+    throw configError("PATH_SECRET contains unsupported characters");
+  }
+  if (allowWeak) {
+    return;
+  }
+
+  const named: Array<[string, string]> = [
+    ["PATH_SECRET", secrets.pathSecret],
+    ["ADMIN_PASSWORD", secrets.adminPassword],
+    ["TRANSPORT_SECRET", secrets.transportSecret],
+  ];
+  for (const [name, value] of named) {
+    if (PLACEHOLDER_SECRETS.has(value.toLowerCase())) {
+      throw configError(`${name} is still a placeholder value; generate a random one`);
+    }
+  }
+  if (new Set(named.map(([, value]) => value)).size !== named.length) {
+    throw configError("PATH_SECRET, ADMIN_PASSWORD and TRANSPORT_SECRET must be three different values");
+  }
+  for (const [name, value] of named.slice(1)) {
+    if (value.length < MIN_SECRET_LENGTH) {
+      throw configError(
+        `${name} must be at least ${MIN_SECRET_LENGTH} characters of random data ` +
+        "(set ALLOW_WEAK_SECRETS=true to start anyway)",
+      );
+    }
+  }
+}
+
 export function loadRuntimeConfig(): RuntimeConfig {
   const pathSecret = requireString("PATH_SECRET");
   const dbPath = resolveDbPath(process.env.DB_PATH?.trim() ?? "./data/cookie_share.db");
+  const adminPassword = requireString("ADMIN_PASSWORD");
+  const transportSecret = requireString("TRANSPORT_SECRET");
+  validateSecrets({ pathSecret, adminPassword, transportSecret }, isTrue("ALLOW_WEAK_SECRETS"));
 
   return {
+    trustProxy: isTrue("TRUST_PROXY"),
     host: process.env.HOST?.trim() || "0.0.0.0",
     port: resolvePort(),
     serverRoot: SERVER_ROOT,
     dbPath,
     pathSecret,
     basePath: `/${pathSecret}`,
-    adminPassword: requireString("ADMIN_PASSWORD"),
-    transportSecret: requireString("TRANSPORT_SECRET"),
+    adminPassword,
+    transportSecret,
   };
 }

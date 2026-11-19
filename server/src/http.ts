@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { encryptPayload } from "./crypto";
+import { encryptPayloadAsync } from "./crypto";
 
 export const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 export const CORS_HEADERS = "Content-Type, X-Admin-Password";
@@ -24,8 +24,8 @@ export function sendHtml(response: Response, html: string): void {
   response.status(200).type("text/html; charset=UTF-8").send(html);
 }
 
-export function sendEncryptedJson(response: Response, status: number, body: unknown, secret: string): void {
-  sendJson(response, status, encryptPayload(secret, body));
+export async function sendEncryptedJson(response: Response, status: number, body: unknown, secret: string): Promise<void> {
+  sendJson(response, status, await encryptPayloadAsync(secret, body));
 }
 
 export function sendCorsPreflight(response: Response): void {
