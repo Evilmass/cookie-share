@@ -231,6 +231,29 @@ describe("admin endpoints (ADMIN_PASSWORD)", () => {
       headers: { "X-Admin-Password": "nope" },
     });
     expect(wrong.status).toBe(401);
+    // Never encrypted with the real admin password (offline guessing oracle).
+    expect(await wrong.json()).toEqual({ success: false, message: "Unauthorized" });
+  });
+
+  it("throttles repeated wrong legacy admin passwords per client", async () => {
+    const attacker = { "CF-Connecting-IP": "203.0.113.9" };
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const response = await request("/admin/list-cookies", {
+        headers: { ...attacker, "X-Admin-Password": `guess-${attempt}` },
+      });
+      expect(response.status).toBe(401);
+    }
+
+    // Even the correct password is refused while throttled.
+    const throttled = await request("/admin/list-cookies", {
+      headers: { ...attacker, ...adminHeaders() },
+    });
+    expect(throttled.status).toBe(429);
+
+    const otherClient = await request("/admin/list-cookies", {
+      headers: { "CF-Connecting-IP": "203.0.113.10", ...adminHeaders() },
+    });
+    expect(otherClient.status).toBe(200);
   });
 
   it("supports create, list, update, delete", async () => {

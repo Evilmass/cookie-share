@@ -359,10 +359,9 @@ function resolveRouteSecret(path, basePath, runtimeConfig) {
 function ensureAdminPassword(request, runtimeConfig) {
   const providedPassword = request.headers.get("X-Admin-Password");
   if (!providedPassword || !timingSafeEqual(providedPassword, runtimeConfig.adminPassword)) {
-    throw new HttpError(401, "Unauthorized", {
-      success: false,
-      message: "Unauthorized",
-    });
+    // Plain on purpose: an error encrypted with the real admin password would
+    // hand an unauthenticated caller material for offline password guessing.
+    throw plainError(401, "Unauthorized");
   }
 }
 
@@ -1734,6 +1733,24 @@ async function limitRequest(request, env, login = false) {
   if (++entry.count > (login ? 30 : 600)) throw plainError(429, 'Too many requests; retry later');
 }
 
+// Failed legacy admin authentications per IP and minute. Best effort and per
+// isolate, like the fallback above.
+const ADMIN_AUTH_FAILURE_LIMIT = 30;
+function authFailureCount(key) {
+  const entry = localRateWindows.get(key);
+  return entry && Date.now() < entry.until ? entry.count : 0;
+}
+function recordAuthFailure(key) {
+  const now = Date.now();
+  let entry = localRateWindows.get(key);
+  if (!entry || now >= entry.until) {
+    if (localRateWindows.size >= 2048) localRateWindows.delete(localRateWindows.keys().next().value);
+    entry = { count: 0, until: now + 60000 };
+    localRateWindows.set(key, entry);
+  }
+  entry.count += 1;
+}
+
 function readDeviceCredentials(env) {
   if (!env.DEVICE_TOKENS) return [];
   let values;
@@ -1846,7 +1863,12 @@ async function handleAdminLogin(request, env, config, basePath) {
 async function authorizeAdmin(request, env, config) {
   const legacy = request.headers.get('X-Admin-Password');
   if (legacy && String(env.DISABLE_LEGACY_ADMIN).toLowerCase() !== 'true') {
-    ensureAdminPassword(request, config);
+    // The raw-password header must not be a faster guessing channel than
+    // /admin/login. Checked before comparing, so a throttled caller cannot
+    // tell a correct guess from a wrong one.
+    const key = 'adminfail:' + (request.headers.get('CF-Connecting-IP') || 'local');
+    if (authFailureCount(key) >= ADMIN_AUTH_FAILURE_LIMIT) throw plainError(429, 'Too many requests; retry later');
+    try { ensureAdminPassword(request, config); } catch (error) { recordAuthFailure(key); throw error; }
     return config.adminPassword;
   }
   const token = (request.headers.get('Cookie') || '').split(';').map((s) => s.trim()).find((s) => s.startsWith('cookie_share_admin='))?.slice('cookie_share_admin='.length);
